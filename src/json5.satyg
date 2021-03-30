@@ -316,6 +316,7 @@ let lex-number is-plus is-hex position unicode-lst =
           let fl = exp-minus (float int) exp in
           Some(Token.make (Json5TokenKindFloat(fl)) new-position, new-position, lst)
       )
+      | _ -> None
     )
     | _ -> (
       let new-position = plus-column-position column position in
