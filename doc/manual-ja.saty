@@ -2,10 +2,50 @@
 @require: itemize
 @require: code
 
+@require: base/base
+
 %@require: json/json
 %@require: json/json5
 @import: ../src/json
 @import: ../src/json5
+
+
+let json-str = ```
+{
+  "foo" : "foo",
+  "bar" : {
+    "bar1" : [1,2,3],
+    "bar2" : [
+      {"baz1" : 123, "baz2" : -1.2},
+      {"baz3" : null, "baz4" : true}
+    ]
+  }
+}
+```
+let json = json-str |> JSON.parse |> Result.unwrap
+let json-test-str = JSON.to-string json
+
+let json5-str = `
+{
+  // comments
+  "foo" : "foo",
+  /*
+    block comments
+    / hoge * fuga/
+  */
+  bar : {
+    "bar1" : [1,2,3,],
+    "bar2" : [
+      {"baz1" : 123, "baz2" : -Infinity},
+      {"baz3" : null, "baz4" : true, "baz" : 0xabcd}
+    ]
+  },
+}
+`
+let json5 = json5-str |> JSON5.parse |> Result.unwrap
+let json5-test-str = JSON5.to-string json5
+
+in
 
 document (|
   title = {json Manual};
@@ -40,6 +80,23 @@ type json =
     }
     +p{`json.satyg`では`JSON`モジュールが定義されています。}
     +p{`JSON`モジュールでは`parse : json json-parse-error result`という関数（ここでの`result`は`satysfi-base`の`base.satyg`で定義されているもの）と`to-string : json -> string`という関数の2つが公開されています。}
+  +code(```
+let json-str = `
+{
+  "foo" : "foo",
+  "bar" : {
+    "bar1" : [1,2,3],
+    "bar2" : [
+      {"baz1" : 123, "baz2" : -1.2},
+      {"baz3" : null, "baz4" : true}
+    ]
+  }
+}
+`
+let json = json-str |> JSON.parse |> Result.unwrap
+let str = JSON.to-string json
+  ```);
+  +p{というコードがあったとき、`str`は\code(json-test-str);になります。}
   >
   +section {`json5.satyg`で定義されているもの} <
     +p{グローバル空間に
@@ -72,6 +129,28 @@ type json5 =
     }
     +p{`json5.satyg`では`JSON5`モジュールが定義されています。}
     +p{`JSON5`モジュールでは`parse : json5 json5-parse-error result`という関数（ここでの`result`は`satysfi-base`の`base.satyg`で定義されているもの）と`to-string : json -> string`という関数の2つが公開されています。}
+  +code(```
+let json5-str = `
+{
+  // comments
+  "foo" : "foo",
+  /*
+    block comments
+    / hoge * fuga/
+  */
+  bar : {
+    "bar1" : [1,2,3,],
+    "bar2" : [
+      {"baz1" : 123, "baz2" : -Infinity},
+      {"baz3" : null, "baz4" : true, "baz" : 0xabcd}
+    ]
+  },
+}
+`
+let json5 = json5-str |> JSON5.parse |> Result.unwrap
+let str = JSON5.to-string json5
+  ```);
+  +p{というコードがあったとき、`str`は\code(json5-test-str);になります。}
   >
   +section {必要なバージョンや依存など}<
     +p{`satysfi-dist`と`satysfi-base`の二つに依存します。また、必要なバージョンは\SATySFi;のv0.0.5以上が必要になります。}
