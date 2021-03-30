@@ -1,9 +1,9 @@
 opam-version: "2.0"
 name: "satysfi-json-doc"
 version: "1.0.0"
-synopsis: "Document of A Great SATySFi Package"
+synopsis: "Document of JSON parser for SATySFi"
 description: """
-Brilliant description comes here.
+Document of JSON parser for SATySFi.
 """
 maintainer: "Naoki Kaneko <puripuri2100@gmail.com>"
 authors: "Naoki Kaneko <puripuri2100@gmail.com>"
