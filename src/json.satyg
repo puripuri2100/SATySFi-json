@@ -4,7 +4,6 @@
 @require: base/int
 @require: base/float
 @require: base/result
-@require: base/stream
 @require: base/parser
 
 type json =
