@@ -1,0 +1,553 @@
+@require: base/list-ext
+@require: base/string
+@require: base/char
+@require: base/int
+@require: base/float
+@require: base/result
+@require: base/stream
+@require: base/parser
+
+type json =
+  | JsonNull
+  | JsonBool of bool
+  | JsonInt of int
+  | JsonFloat of float
+  | JsonString of string
+  | JsonArray of json list
+  | JsonObject of (string * json) list
+
+type json-token-kind =
+  | JsonTokenKindString of string
+  | JsonTokenKindInt of int
+  | JsonTokenKindFloat of float
+  | JsonTokenKindTrue
+  | JsonTokenKindFalse
+  | JsonTokenKindNull
+  | JsonTokenKindComma
+  | JsonTokenKindColon
+  | JsonTokenKindLeftCurlyBracket
+  | JsonTokenKindRightCurlyBracket
+  | JsonTokenKindLeftSquareBracket
+  | JsonTokenKindRightSquareBracket
+
+type json-token = json-token-kind Token.t
+
+
+type json-parse-error = (|
+  token: json-token option;
+  desc: string
+|)
+
+module JSON : sig
+  val parse : string -> json json-parse-error result
+  val to-string : json -> string
+
+end = struct
+
+
+let new-line-position position =
+  (|
+    line = position#line + 1;
+    column = 0;
+  |)
+
+let plus1-position position =
+  (|
+    line = position#line;
+    column = position#line + 1;
+  |)
+
+let plus-column-position column position =
+  (|
+    line = position#line;
+    column = position#line + column
+  |)
+
+let plus-position line column position =
+  (|
+    line = position#line + line;
+    column = position#line + column
+  |)
+
+
+let is-unicode-hex unicode =
+  ((unicode >= 0x0030) && (0x0039 >= unicode)) ||
+  ((unicode >= 0x0041) && (0x0046 >= unicode)) ||
+  ((unicode >= 0x0061) && (0x0066 >= unicode))
+
+
+let-rec lex-string str-stack line column unicode-lst =
+  match unicode-lst with
+  | [] -> None
+  | x::xs -> (
+    match x with
+    | 0x0022 -> Some((str-stack, line, column + 1, xs))% u0022 == '"'
+    | 0x005C -> (% u005C == '\'
+      match xs with
+      | [] -> None
+      | y::ys -> (
+        match y with
+        | 0x0022 -> lex-string (str-stack^`"`) line (column + 2) ys
+        | 0x005C -> lex-string (str-stack^`\`) line (column + 2) ys
+        | 0x002F -> lex-string (str-stack^`/`) line (column + 2) ys
+        | 0x0062 -> lex-string (str-stack^(string-unexplode [0x0008])) line (column + 2) ys % \b backspace
+        | 0x0066 -> lex-string (str-stack^(string-unexplode [0x000C])) line (column + 2) ys % \f formfeed
+        | 0x006E -> lex-string (str-stack^(string-unexplode [0x000A])) line (column + 2) ys % \n linefeed
+        | 0x0072 -> lex-string (str-stack^(string-unexplode [0x000D])) line (column + 2) ys % \r carriage return
+        | 0x0074 -> lex-string (str-stack^(string-unexplode [0x0009])) line (column + 2) ys % \t horizontal tab
+        | 0x0075 -> (% \u
+          match ys with
+          | z1::z2::z3::z4::zs when is-unicode-hex z1 && is-unicode-hex z2 && is-unicode-hex z3 && is-unicode-hex z4 -> (
+            let hex-str = string-unexplode [z1;z2;z3;z4] in
+            match Int.of-string-opt ?:(16) hex-str with
+            | None -> None
+            | Some(hex) -> (
+              let str = string-unexplode [hex] in
+              lex-string (str-stack^str) line (column + 6) zs
+            )
+          )
+          | _ -> None
+        )
+        | _ -> None
+      )
+    )
+    | 0x000A -> lex-string (str-stack ^ (string-unexplode[0x000A])) (line + 1) 0 xs
+    | _ -> lex-string (str-stack ^ (string-unexplode[x])) line (column + 1) xs
+  )
+
+
+let-rec lex-value str-stack-lst column unicode-lst =
+  match unicode-lst with
+  | [] -> (string-unexplode (List.reverse str-stack-lst), column, [])
+  | x::xs -> (
+    match x with
+    | x when x |> Char.of-codepoint |> Char.is-alpha -> (
+      lex-value (x::str-stack-lst) (column + 1) xs
+    )
+    | _ -> (string-unexplode (List.reverse str-stack-lst), column, x::xs)
+  )
+
+
+let-rec stack-digit stack-lst column unicode-lst =
+  match unicode-lst with
+  | [] -> (List.reverse stack-lst, column, [])
+  | x::xs -> (
+    if x |> Char.of-codepoint |> Char.is-digit then
+      stack-digit (x::stack-lst) (column + 1) xs
+    else
+      (List.reverse stack-lst, column, x::xs)
+  )
+
+
+let-rec exp-int-plus n exp =
+  if exp <= 0 then
+    n
+  else
+    exp-int-plus (n * 10) (exp - 1)
+
+let-rec exp-float-plus n exp =
+  if exp <= 0 then
+    n
+  else
+    exp-float-plus (n *. 10.0) (exp - 1)
+
+let-rec exp-minus n exp =
+  if exp <= 0 then
+    n
+  else
+    exp-minus (n /. 10.0) (exp - 1)
+
+
+let lex-number is-plus position unicode-lst =
+  let (digit-lst, column, lst) = stack-digit [] 0 unicode-lst in
+  match lst with
+  | 0x002E::ys -> (% 0x002E == '.'
+    let (digit-lst-2, column2, lst) = stack-digit [] 0 ys in
+    let stack = List.concat [digit-lst; [0x002E]; digit-lst-2] in
+    let float-opt =
+      string-unexplode stack
+      |> Float.of-string-opt
+    in
+    let float-opt =
+      if is-plus then
+        float-opt
+      else
+        float-opt |> Option.map Float.neg
+    in
+    match lst with
+    | z1::z2::zs when z1 == 0x0045 || z1 == 0x0065 -> (% 指数表記をする
+      let (digit-lst-3, column3, lst) =
+        if z2 == 0x002D || z2 == 0x002B then
+          stack-digit [] 0 zs
+        else
+          stack-digit [] 0 (z2::zs)
+      in
+      let new-position =
+        plus-column-position (column + 1 + column2 + 1 + column3) position
+      in
+      let is-exp-plus =
+        not (z2 == 0x002D)
+      in
+      let exp-opt = Int.of-string-opt (string-unexplode digit-lst-3) in
+      match (exp-opt, float-opt) with
+      | (Some(exp), Some(float)) -> (
+        if is-exp-plus then
+          let fl = exp-float-plus float exp in
+          Some(Token.make (JsonTokenKindFloat(fl)) new-position, new-position, lst)
+        else
+          let fl = exp-minus float exp in
+          Some(Token.make (JsonTokenKindFloat(fl)) new-position, new-position, lst)
+      )
+      | _ -> None
+    )
+    | _ -> (% 指数表記をしない
+      match float-opt with
+      | None -> None
+      | Some(float) -> (
+        let new-position = plus-column-position (column + 1 + column2) position in
+        Some(Token.make (JsonTokenKindFloat(float)) new-position, new-position, lst)
+      )
+    )
+  )
+  | y1::y2::ys when y1 == 0x0045 || y1 == 0x0065 -> (
+    let (digit-lst-2, column2, lst) =
+      if y2 == 0x002D || y2 == 0x002B then
+        stack-digit [] 0 ys
+      else
+        stack-digit [] 0 (y2::ys)
+    in
+    let new-position = plus-column-position (column + 1 + column2) position in
+    let is-exp-plus =
+      not (y2 == 0x002D)
+    in
+    let n-opt = Int.of-string-opt (string-unexplode digit-lst) in
+    let exp-opt = Int.of-string-opt (string-unexplode digit-lst-2) in
+    match (n-opt, exp-opt) with
+    | (Some(n), Some(exp)) -> (
+      let int =
+        if is-plus then
+          n
+        else
+          n * (-1)
+      in
+      if is-exp-plus then
+        let n = exp-int-plus int exp in
+        Some(Token.make (JsonTokenKindInt(n)) new-position, new-position, lst)
+      else
+        let fl = exp-minus (float int) exp in
+        Some(Token.make (JsonTokenKindFloat(fl)) new-position, new-position, lst)
+    )
+    | _ -> None
+  )
+  | _ -> (
+    let new-position = plus-column-position column position in
+    let n-opt = Int.of-string-opt (string-unexplode digit-lst) in
+    match n-opt with
+    | None -> None
+    | Some(n) -> (
+      let int =
+        if is-plus then
+          n
+        else
+          n * (-1)
+      in
+      Some(Token.make (JsonTokenKindInt(int)) new-position, new-position, lst)
+    )
+  )
+
+
+% token list -> token-position -> int list -> (token Token.t) list
+let-rec lex token-lst position unicode-lst =
+  match unicode-lst with
+  | [] -> Some(List.reverse token-lst)
+  | x::xs -> (
+    match x with
+    | 0x002C -> (
+      lex
+        ((Token.make JsonTokenKindComma (plus1-position position)) :: token-lst)
+        (plus1-position position)
+        xs
+    )
+    | 0x003A -> (
+      lex
+        ((Token.make JsonTokenKindColon (plus1-position position)) :: token-lst)
+        (plus1-position position)
+        xs
+    )
+    | 0x007B -> (
+      lex
+        ((Token.make JsonTokenKindLeftCurlyBracket (plus1-position position)) :: token-lst)
+        (plus1-position position)
+        xs
+    )
+    | 0x007D -> (
+      lex
+        ((Token.make JsonTokenKindRightCurlyBracket (plus1-position position)) :: token-lst)
+        (plus1-position position)
+        xs
+    )
+    | 0x005B -> (
+      lex
+        ((Token.make JsonTokenKindLeftSquareBracket (plus1-position position)) :: token-lst)
+        (plus1-position position)
+        xs
+    )
+    | 0x005D -> (
+      lex
+        ((Token.make JsonTokenKindRightSquareBracket (plus1-position position)) :: token-lst)
+        (plus1-position position)
+        xs
+    )
+    | 0x0022 -> (% "
+      match lex-string String.empty 0 0 xs with
+      | None -> None
+      | Some((str, line, column, lst)) -> (
+        let new-position = plus-position line column position in
+        lex ((Token.make (JsonTokenKindString(str)) new-position) :: token-lst) new-position lst
+      )
+    )
+    | 0x000A -> (% LineFeed \n
+      lex
+        token-lst
+        (new-line-position position)
+        xs
+    )
+    | 0x0009 -> (% Horizontal Tab \t
+      lex
+        token-lst
+        (plus1-position position)
+        xs
+    )
+    | 0x0020 -> (% space
+      lex
+        token-lst
+        (plus1-position position)
+        xs
+    )
+    | 0x000D -> (% carriage return CR \r
+      lex
+        token-lst
+        (plus1-position position)
+        xs
+    )
+    | x when x |> Char.of-codepoint |> Char.is-alpha -> (
+      let (str, column, xs) = lex-value [] 0 (x::xs) in
+      let new-position = plus-column-position column position in
+      match str with
+      | `true` -> lex ((Token.make JsonTokenKindTrue new-position) :: token-lst) new-position xs
+      | `false` -> lex ((Token.make JsonTokenKindFalse new-position) :: token-lst) new-position xs
+      | `null` -> lex ((Token.make JsonTokenKindNull new-position) :: token-lst) new-position xs
+      | _ -> None
+    )
+    | 0x002D -> (% '-'
+      match xs with
+      | [] -> None
+      | y::ys when y |> Char.of-codepoint |> Char.is-digit -> (
+        match lex-number false position xs with
+        | None -> None
+        | Some(number, new-position, lst) -> lex (number :: token-lst) new-position lst
+      )
+      | _ -> None
+    )
+    | x when x |> Char.of-codepoint |> Char.is-digit -> (
+      match lex-number true position (x::xs) with
+      | None -> None
+      | Some(number, new-position, lst) -> lex (number :: token-lst) new-position lst
+    )
+    | _ -> None
+  )
+
+
+let-rec parse-array token-lst =
+  let-rec sub is-start stack token-lst =
+    match token-lst with
+    | [] -> Err((|token = None; desc = `eof`;|))
+    | x::xs -> (
+      match Token.data x with
+      | JsonTokenKindRightSquareBracket -> Ok(JsonArray(List.reverse stack), xs)
+      | JsonTokenKindComma -> (
+        if is-start then
+          Err((|token = Some(x); desc = `unexpected token`;|))
+        else
+          match parse-value xs with
+          | Err(e) -> Err(e)
+          | Ok(value, lst) -> sub false (value::stack) lst
+      )
+      | _ -> (
+        if is-start then
+          match parse-value (x::xs) with
+          | Err(e) -> Err(e)
+          | Ok(value, lst) -> sub false (value::stack) lst
+        else
+          Err((|token = None; desc = ` `;|))
+      )
+    )
+  in
+  sub true [] token-lst
+
+and parse-object token-lst =
+  let-rec sub is-start stack token-lst =
+    match token-lst with
+    | [] -> Err((|token = None; desc = `eof`;|))
+    | x::xs -> (
+      match Token.data x with
+      | JsonTokenKindRightCurlyBracket -> Ok(JsonObject(List.reverse stack), xs)
+      | JsonTokenKindComma -> (
+        if is-start then
+          Err(
+              (|
+                token = Some(x);
+                desc = `unexpected token`;
+              |)
+            )
+        else
+          match xs with
+          | y1::y2::ys -> (
+            match (Token.data y1, Token.data y2) with
+            | (JsonTokenKindString(tag), JsonTokenKindColon) -> (
+              match parse-value ys with
+              | Err(e) -> Err(e)
+              | Ok(value, lst) -> sub false ((tag, value)::stack) lst
+            )
+            | _ -> Err(
+              (|
+                token = Some(y1);
+                desc = `unexpected token`;
+              |)
+            )
+          )
+          | _ -> Err((|token = None; desc = ` `;|))
+      )
+      | tok -> (
+        if is-start then
+          match x::xs with
+          | y1::y2::ys -> (
+            match (Token.data y1, Token.data y2) with
+            | (JsonTokenKindString(tag), JsonTokenKindColon) -> (
+              match parse-value ys with
+              | Err(e) -> Err(e)
+              | Ok(value, lst) -> sub false ((tag, value)::stack) lst
+            )
+            | _ -> Err((|token = None; desc = ` `;|))
+          )
+          | _ -> Err((|token = None; desc = ` `;|))
+        else
+          Err((|token = None; desc = `unexpected token`;|))
+      )
+    )
+  in
+  sub true [] token-lst
+
+and parse-value token-lst =
+  match token-lst with
+  | [] -> Err((|token = None; desc = ` `;|))
+  | x::xs -> (
+    match Token.data x with
+    | JsonTokenKindNull -> Ok(JsonNull, xs)
+    | JsonTokenKindTrue -> Ok(JsonBool(true), xs)
+    | JsonTokenKindFalse -> Ok(JsonBool(false), xs)
+    | JsonTokenKindInt(n) -> Ok(JsonInt(n), xs)
+    | JsonTokenKindFloat(fl) -> Ok(JsonFloat(fl), xs)
+    | JsonTokenKindString(str) -> Ok(JsonString(str), xs)
+    | JsonTokenKindLeftSquareBracket -> parse-array xs
+    | JsonTokenKindLeftCurlyBracket -> parse-object xs
+    | _ -> Err((|token = Some(x); desc = `unexpected token`;|))
+  )
+
+
+let parse json-string =
+  let json-unicode-lst = string-explode json-string in
+  let token-lst-opt = lex [] Token.initial-position json-unicode-lst in
+  match token-lst-opt with
+  | None -> Err((|token = None; desc = ` `;|))
+  | Some(token-lst) -> (
+    match parse-value token-lst with
+    | Err(e) -> Err(e)
+    | Ok(json, []) -> Ok(json)
+    | _ -> Err((|token = None; desc = ` `;|))
+  )
+
+
+let-rec escape-string stack unicode-lst =
+  match unicode-lst with
+  | [] -> stack
+  | x::xs -> (
+    match x with
+    | 0x0022 -> escape-string (stack ^ `\"`) xs
+    | 0x005C -> escape-string (stack ^ `\\`) xs
+    | 0x002F -> escape-string (stack ^ `\/`) xs
+    | 0x0008 -> escape-string (stack ^ `\b`) xs
+    | 0x000C -> escape-string (stack ^ `\f`) xs
+    | 0x000A -> escape-string (stack ^ `\n`) xs
+    | 0x000D -> escape-string (stack ^ `\r`) xs
+    | 0x0000 -> escape-string (stack ^ `\u0000`) xs
+    | 0x0001 -> escape-string (stack ^ `\u0001`) xs
+    | 0x0002 -> escape-string (stack ^ `\u0002`) xs
+    | 0x0003 -> escape-string (stack ^ `\u0003`) xs
+    | 0x0004 -> escape-string (stack ^ `\u0004`) xs
+    | 0x0005 -> escape-string (stack ^ `\u0005`) xs
+    | 0x0006 -> escape-string (stack ^ `\u0006`) xs
+    | 0x0007 -> escape-string (stack ^ `\u0007`) xs
+    | 0x0009 -> escape-string (stack ^ `\u0009`) xs
+    | 0x000B -> escape-string (stack ^ `\u000B`) xs
+    | 0x000E -> escape-string (stack ^ `\u000E`) xs
+    | 0x000F -> escape-string (stack ^ `\u000F`) xs
+    | 0x0010 -> escape-string (stack ^ `\u0010`) xs
+    | 0x0011 -> escape-string (stack ^ `\u0011`) xs
+    | 0x0012 -> escape-string (stack ^ `\u0012`) xs
+    | 0x0013 -> escape-string (stack ^ `\u0013`) xs
+    | 0x0014 -> escape-string (stack ^ `\u0014`) xs
+    | 0x0015 -> escape-string (stack ^ `\u0015`) xs
+    | 0x0016 -> escape-string (stack ^ `\u0016`) xs
+    | 0x0017 -> escape-string (stack ^ `\u0017`) xs
+    | 0x0018 -> escape-string (stack ^ `\u0018`) xs
+    | 0x0019 -> escape-string (stack ^ `\u0019`) xs
+    | 0x001A -> escape-string (stack ^ `\u001A`) xs
+    | 0x001B -> escape-string (stack ^ `\u001B`) xs
+    | 0x001C -> escape-string (stack ^ `\u001C`) xs
+    | 0x001D -> escape-string (stack ^ `\u001D`) xs
+    | 0x001E -> escape-string (stack ^ `\u001E`) xs
+    | 0x001F -> escape-string (stack ^ `\u001F`) xs
+    | _ -> escape-string (stack ^ (string-unexplode[x])) xs
+  )
+
+let-rec to-string json =
+  match json with
+  | JsonInt(n) -> arabic n
+  | JsonFloat(fl) -> (
+    let s = show-float fl in
+    match (s |> string-explode |> List.reverse) with
+    | 0x002E::_ -> s^`0`
+    | _ -> s
+  )
+  | JsonString(str) -> `"` ^ (escape-string String.empty (string-explode str)) ^ `"`
+  | JsonNull -> `null`
+  | JsonBool(true) -> `true`
+  | JsonBool(false) -> `false`
+  | JsonArray(array) -> (
+    array
+    |> List.map to-string
+    |> List.fold-lefti (fun i s1 s2 -> (
+      if i == 0 then
+        s2
+      else
+        s1 ^ `,` ^ s2
+    )) String.empty
+    |> (fun s -> `[` ^ s ^ `]`)
+  )
+  | JsonObject(object) -> (
+    object
+    |> List.map (fun (tag, json) -> (
+        let json-str = to-string json in
+        `"` ^ tag ^ `"` ^ `:` ^ json-str
+      ))
+    |> List.fold-lefti (fun i s1 s2 -> (
+      if i == 0 then
+        s2
+      else
+        s1 ^ `,` ^ s2
+    )) String.empty
+    |> (fun s -> `{` ^ s ^ `}`)
+  )
+
+end

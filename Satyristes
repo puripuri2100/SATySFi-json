@@ -1,0 +1,43 @@
+;; For Satyrographos 0.0.2 series
+(version 0.0.2)
+
+;; Library declaration
+(library
+  ;; Library name
+  (name "json")
+  ;; Library version
+  (version "1.0.0")
+  ;; Files
+  (sources
+    ((packageDir "src")))
+  ;; OPAM package file
+  (opam "satysfi-json.opam")
+  ;; Dependency
+  (dependencies
+    ((dist ()) ; Standard library
+     (base ()) ; Base library
+    )))
+
+;; Library doc declaration
+(libraryDoc
+  ;; Library doc name
+  (name "json-doc")
+  ;; Library version
+  (version "1.0.0")
+  ;; Working directory to build docs
+  (workingDirectory "doc")
+  ;; Build commands
+  (build
+    ;; Run SATySFi
+    ((satysfi "manual-ja.saty" "-o" "manual-ja.pdf")))
+  ;; Files
+  (sources
+    ((doc "manual-ja.pdf" "doc/manual-ja.pdf")))
+  ;; OPAM package file
+  (opam "satysfi-json-doc.opam")
+  ;; Dependency
+  (dependencies
+    ((json ()) ; the main library
+     (dist ()) ; Standard library
+     (base ()) ; Base library
+    )))
