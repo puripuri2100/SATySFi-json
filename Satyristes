@@ -6,7 +6,7 @@
   ;; Library name
   (name "json")
   ;; Library version
-  (version "1.0.0")
+  (version "1.0.1")
   ;; Files
   (sources
     ((packageDir "src")))
@@ -23,7 +23,7 @@
   ;; Library doc name
   (name "json-doc")
   ;; Library version
-  (version "1.0.0")
+  (version "1.0.1")
   ;; Working directory to build docs
   (workingDirectory "doc")
   ;; Build commands

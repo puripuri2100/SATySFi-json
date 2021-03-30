@@ -1,6 +1,6 @@
 opam-version: "2.0"
 name: "satysfi-json"
-version: "1.0.0"
+version: "1.0.1"
 synopsis: "JSON parser for SATySFi"
 description: """
 JSON parser for SATySFi.
