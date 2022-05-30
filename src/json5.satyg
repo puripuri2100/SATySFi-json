@@ -49,6 +49,23 @@ module JSON5 : sig
   val parse : string -> json5 json5-parse-error result
   val to-string : json5 -> string
 
+  val is-null : json5 -> bool
+  val is-bool : json5 -> bool
+  val as-bool : json5 -> bool option
+  val is-int : json5 -> bool
+  val as-int : json5 -> int option
+  val is-float : json5 -> bool
+  val as-float : json5 -> float option
+  val is-nan : json5 -> bool
+  val is-infinity : json5 -> bool
+  val is-neg-infinity : json5 -> bool
+  val is-string : json5 -> bool
+  val as-string : json5 -> string option
+  val is-array : json5 -> bool
+  val as-array : json5 -> (json5 list) option
+  val is-object : json5 -> bool
+  val as-object : json5 -> ((string * json5) list) option
+
 end = struct
 
 
@@ -665,6 +682,82 @@ let parse json-string =
     | Ok(json, []) -> Ok(json)
     | _ -> Err((|token = None; desc = ` `;|))
   )
+
+
+
+
+
+let is-null json =
+  match json with
+  | Json5Null -> true
+  | _ -> false
+
+let is-bool json =
+  match json with
+  | Json5Bool(_) -> true
+  | _ -> false
+let as-bool json =
+  match json with
+  | Json5Bool(b) -> Some(b)
+  | _ -> None
+
+let is-int json =
+  match json with
+  | Json5Int(_) -> true
+  | _ -> false
+let as-int json =
+  match json with
+  | Json5Int(i) -> Some(i)
+  | _ -> None
+
+let is-float json =
+  match json with
+  | Json5Float(_) -> true
+  | _ -> false
+let as-float json =
+  match json with
+  | Json5Float(f) -> Some(f)
+  | _ -> None
+
+let is-nan json =
+  match json with
+  | Json5NaN -> true
+  | _ -> false
+let is-infinity json =
+  match json with
+  | Json5Infinity -> true
+  | _ -> false
+let is-neg-infinity json =
+  match json with
+  | Json5NegInfinity -> true
+  | _ -> false
+
+let is-string json =
+  match json with
+  | Json5String(_) -> true
+  | _ -> false
+let as-string json =
+  match json with
+  | Json5String(s) -> Some(s)
+  | _ -> None
+
+let is-array json =
+  match json with
+  | Json5Array(_) -> true
+  | _ -> false
+let as-array json =
+  match json with
+  | Json5Array(a) -> Some(a)
+  | _ -> None
+
+let is-object json =
+  match json with
+  | Json5Object(_) -> true
+  | _ -> false
+let as-object json =
+  match json with
+  | Json5Object(o) -> Some(o)
+  | _ -> None
 
 
 let-rec escape-string stack unicode-lst =

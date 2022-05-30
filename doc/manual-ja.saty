@@ -3,11 +3,14 @@
 @require: code
 
 @require: base/base
+@require: code-printer/code-printer
+@require: code-printer/code-syntax
+@require: code-printer/code-theme
 
-%@require: json/json
-%@require: json/json5
-@import: ../src/json
-@import: ../src/json5
+@require: json/json
+@require: json/json5
+%@import: ../src/json
+%@import: ../src/json5
 
 
 let json-str = ```
@@ -57,16 +60,16 @@ document (|
   +p{`json.satyg`というファイルでは\href(`https://www.json.org/json-en.html`){JSON}の規格に準拠したパーサと文字列化関数が定義されています。そして、`json5.satyg`というファイルでは\href(`https://json5.org/`){JSON5}の規格に準拠したパーサと文字列化関数が定義されています。}
   +section {`json.satyg`で定義されているもの} <
     +p{グローバル空間に
-\d-code(```
-type json =
+\code-printer ?:(
+    CodePrinter.make-config CodeSyntax.satysfi CodeTheme.basic-font
+)(```type json =
   | JsonNull
   | JsonBool of bool
   | JsonInt of int
   | JsonFloat of float
   | JsonString of string
   | JsonArray of json list
-  | JsonObject of (string * json) list
-```);が定義されています。上から順に
+  | JsonObject of (string * json) list```);が定義されています。上から順に
       \enumerate{
         * `JsonNull`：`null`を表す
         * `JsonBool`：`true`もしくは`false`を格納する
@@ -79,9 +82,10 @@ type json =
       という役割を持っています。
     }
     +p{`json.satyg`では`JSON`モジュールが定義されています。}
-    +p{`JSON`モジュールでは`parse : json json-parse-error result`という関数（ここでの`result`は`satysfi-base`の`base.satyg`で定義されているもの）と`to-string : json -> string`という関数の2つが公開されています。}
-  +code(```
-let json-str = `
+    +p{`JSON`モジュールでは文字列をパースして`json`データを生成する`parse : json json-parse-error result`という関数（ここでの`result`は`satysfi-base`の`base.satyg`で定義されているもの）と、`json`データを文字列に変換する`to-string : json -> string`という関数が公開されています。}
+    +code-printer ?:(
+    CodePrinter.make-config CodeSyntax.satysfi CodeTheme.basic-font
+    )(```let json-str = `
 {
   "foo" : "foo",
   "bar" : {
@@ -94,14 +98,31 @@ let json-str = `
 }
 `
 let json = json-str |> JSON.parse |> Result.unwrap
-let str = JSON.to-string json
-  ```);
-  +p{というコードがあったとき、`str`は\code(json-test-str);になります。}
+let str = JSON.to-string json```);
+  +p{というコードがあったとき、`str`は\inline-code ?:(CodePrinter.make-config CodeSyntax.json CodeTheme.basic-font) (json-test-str);になります。}
+  +p{また、`json`データから目的のデータを取り出すために}
+  +listing{
+    * `is-null : json -> bool`
+    * `is-bool : json -> bool`
+    * `as-bool : json -> bool option`
+    * `is-int : json -> bool`
+    * `as-int : json -> int option`
+    * `is-float : json -> bool`
+    * `as-float : json -> float option`
+    * `is-string : json -> bool`
+    * `as-string : json -> string option`
+    * `is-array : json -> bool`
+    * `as-array : json -> (json list) option`
+    * `is-object : json -> bool`
+    * `as-object : json -> ((string * json) list) option`
+  }
+  +p{という各種関数が定義されています。}
   >
   +section {`json5.satyg`で定義されているもの} <
     +p{グローバル空間に
-\d-code(```
-type json5 =
+\code-printer ?:(
+    CodePrinter.make-config CodeSyntax.satysfi CodeTheme.basic-font
+)(```type json5 =
   | Json5Null
   | Json5Bool of bool
   | Json5Int of int
@@ -111,8 +132,7 @@ type json5 =
   | Json5NegInfinity
   | Json5String of string
   | Json5Array of json5 list
-  | Json5Object of (string * json5) list
-```);が定義されています。上から順に
+  | Json5Object of (string * json5) list```);が定義されています。上から順に
       \enumerate{
         * `Json5Null`：`null`を表す
         * `Json5Bool`：`true`もしくは`false`を格納する
@@ -128,9 +148,10 @@ type json5 =
       という役割を持っています。
     }
     +p{`json5.satyg`では`JSON5`モジュールが定義されています。}
-    +p{`JSON5`モジュールでは`parse : json5 json5-parse-error result`という関数（ここでの`result`は`satysfi-base`の`base.satyg`で定義されているもの）と`to-string : json -> string`という関数の2つが公開されています。}
-  +code(```
-let json5-str = `
+    +p{`JSON5`モジュールでは、文字列から`json5`データを生成する`parse : json5 json5-parse-error result`という関数（ここでの`result`は`satysfi-base`の`base.satyg`で定義されているもの）と、`json5`データを文字列に変換する`to-string : json -> string`という関数が公開されています。}
+    +code-printer ?:(
+      CodePrinter.make-config CodeSyntax.satysfi CodeTheme.basic-font
+    )(```let json5-str = `
 {
   // comments
   "foo" : "foo",
@@ -148,9 +169,28 @@ let json5-str = `
 }
 `
 let json5 = json5-str |> JSON5.parse |> Result.unwrap
-let str = JSON5.to-string json5
-  ```);
-  +p{というコードがあったとき、`str`は\code(json5-test-str);になります。}
+let str = JSON5.to-string json5```);
+  +p{というコードがあったとき、`str`は\inline-code ?:(CodePrinter.make-config CodeSyntax.json CodeTheme.basic-font) (json5-test-str);になります。}
+  +p{また、`json5`データから目的のデータを取り出すために}
+  +listing{
+    * `is-null : json5 -> bool`
+    * `is-bool : json5 -> bool`
+    * `as-bool : json5 -> bool option`
+    * `is-int : json5 -> bool`
+    * `as-int : json5 -> int option`
+    * `is-float : json5 -> bool`
+    * `as-float : json5 -> float option`
+    * `is-nan : json5 -> bool`
+    * `is-infinity : json5 -> bool`
+    * `is-neg-infinity : json5 -> bool`
+    * `is-string : json5 -> bool`
+    * `as-string : json5 -> string option`
+    * `is-array : json5 -> bool`
+    * `as-array : json5 -> (json5 list) option`
+    * `is-object : json5 -> bool`
+    * `as-object : json5 -> ((string * json5) list) option`
+  }
+  +p{という各種関数が定義されています。}
   >
   +section {必要なバージョンや依存など}<
     +p{`satysfi-dist`と`satysfi-base`の二つに依存します。また、必要なバージョンは\SATySFi;のv0.0.5以上が必要になります。}

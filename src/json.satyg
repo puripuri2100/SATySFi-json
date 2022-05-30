@@ -41,6 +41,21 @@ module JSON : sig
   val parse : string -> json json-parse-error result
   val to-string : json -> string
 
+  val is-null : json -> bool
+  val is-bool : json -> bool
+  val as-bool : json -> bool option
+  val is-int : json -> bool
+  val as-int : json -> int option
+  val is-float : json -> bool
+  val as-float : json -> float option
+  val is-string : json -> bool
+  val as-string : json -> string option
+  val is-array : json -> bool
+  val as-array : json -> (json list) option
+  val is-object : json -> bool
+  val as-object : json -> ((string * json) list) option
+
+
 end = struct
 
 
@@ -465,6 +480,68 @@ let parse json-string =
     | Ok(json, []) -> Ok(json)
     | _ -> Err((|token = None; desc = ` `;|))
   )
+
+
+
+let is-null json =
+  match json with
+  | JsonNull -> true
+  | _ -> false
+
+let is-bool json =
+  match json with
+  | JsonBool(_) -> true
+  | _ -> false
+let as-bool json =
+  match json with
+  | JsonBool(b) -> Some(b)
+  | _ -> None
+
+let is-int json =
+  match json with
+  | JsonInt(_) -> true
+  | _ -> false
+let as-int json =
+  match json with
+  | JsonInt(i) -> Some(i)
+  | _ -> None
+
+let is-float json =
+  match json with
+  | JsonFloat(_) -> true
+  | _ -> false
+let as-float json =
+  match json with
+  | JsonFloat(f) -> Some(f)
+  | _ -> None
+
+let is-string json =
+  match json with
+  | JsonString(_) -> true
+  | _ -> false
+let as-string json =
+  match json with
+  | JsonString(s) -> Some(s)
+  | _ -> None
+
+let is-array json =
+  match json with
+  | JsonArray(_) -> true
+  | _ -> false
+let as-array json =
+  match json with
+  | JsonArray(a) -> Some(a)
+  | _ -> None
+
+let is-object json =
+  match json with
+  | JsonObject(_) -> true
+  | _ -> false
+let as-object json =
+  match json with
+  | JsonObject(o) -> Some(o)
+  | _ -> None
+
 
 
 let-rec escape-string stack unicode-lst =
